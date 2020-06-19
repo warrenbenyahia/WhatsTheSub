@@ -42,7 +42,8 @@ class MainActivity : AppCompatActivity() {
     private var randomPostTitle : String? = null
     private var randomPostImageUrl : String? = null
 
-    private var similarSubredditsData : QueryResponse? = null
+    private lateinit var similarSubredditsData : QueryResponse
+    private var subredditsNameList = mutableListOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -139,7 +140,8 @@ class MainActivity : AppCompatActivity() {
     {
         Picasso.get()
             .load(randomPostImageUrl)
-            .resize(500, 500)
+            .fit()
+            .centerInside()
             .memoryPolicy(MemoryPolicy.NO_CACHE, MemoryPolicy.NO_STORE)
             .into(imageView1, object: com.squareup.picasso.Callback {
                 override fun onSuccess() {
@@ -162,8 +164,10 @@ class MainActivity : AppCompatActivity() {
 
         call?.enqueue(object : Callback<QueryResponse> {
             override fun onResponse(call: Call<QueryResponse>, response: Response<QueryResponse>) {
-                similarSubredditsData = response.body()!!
+                if (response.isSuccessful)
+                    similarSubredditsData = response.body()!!
 
+                setSubredditsNameList()
                 setButtonText()
             }
 
@@ -180,26 +184,35 @@ class MainActivity : AppCompatActivity() {
         
         for ((index, button) in buttonList.withIndex()) {
             if (index == n)
-                button.text = "r/" + correctAnswer
+                button.text = "r/$correctAnswer"
             else
                 button.text = getRelatedSubName()
+        }
+
+        //clear list
+        subredditsNameList.clear()
+    }
+
+    private fun setSubredditsNameList()
+    {
+        for (child in similarSubredditsData.rootData?.childrenList!!)
+        {
+            var subName = child?.childData?.subreddit
+            if (!subName.isNullOrEmpty() && !subredditsNameList.contains(subName) && subName != randomSubName)
+                subredditsNameList?.add(subName)
         }
     }
 
     private fun getRelatedSubName() : String
     {
-        var relatedSubName : String?
+        var relatedSubName : String
         var i : Int
+        val childrenListSize = subredditsNameList.size
 
-        val childrenListSize = similarSubredditsData?.rootData?.childrenList?.size
+        i = Random.nextInt(childrenListSize - 1)
+        relatedSubName = subredditsNameList[i]
+        subredditsNameList.removeAt(i)
 
-        i = Random.nextInt(1,childrenListSize!!-1)
-        relatedSubName = similarSubredditsData?.rootData?.childrenList?.get(i)?.childData?.subreddit
-
-        similarSubredditsData?.rootData?.childrenList?.removeAt(i)
-
-        return "r/" + relatedSubName;
-
+        return "r/$relatedSubName"
     }
-
 }

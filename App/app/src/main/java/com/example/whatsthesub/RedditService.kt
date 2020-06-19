@@ -15,6 +15,7 @@ interface RedditService {
 
     @GET("/r/subreddits/search.json")
     fun fetchSubredditsSearch(
-        @Query("q") query: String
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 50
     ): Call<QueryResponse>
 }
