@@ -8,13 +8,13 @@ import retrofit2.http.Query
 interface RedditService {
 
     @GET("/r/random.json")
-    fun fetchRandomSubreddit(): Call<QueryResponse>
+    fun getRandomSubreddit(): Call<QueryResponse>
 
     @GET("/r/{subreddit}/random.json")
-    fun fetchSubredditRandomPost(@Path("subreddit") subreddit: String): Call<List<QueryResponse>>
+    fun getSubredditRandomPost(@Path("subreddit") subreddit: String): Call<List<QueryResponse>>
 
     @GET("/r/subreddits/search.json")
-    fun fetchSubredditsSearch(
+    fun getSubredditsSearch(
         @Query("q") query: String,
         @Query("limit") limit: Int = 50
     ): Call<QueryResponse>

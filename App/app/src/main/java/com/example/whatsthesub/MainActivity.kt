@@ -1,5 +1,6 @@
 package com.example.whatsthesub
 
+import android.content.DialogInterface
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.Contacts
@@ -8,6 +9,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import com.google.gson.GsonBuilder
 import com.squareup.picasso.MemoryPolicy
 import com.squareup.picasso.Picasso
@@ -18,6 +20,7 @@ import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.io.Console
+import java.lang.Exception
 import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
@@ -33,10 +36,10 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var buttonList: List<Button>
 
-    private var service : RedditService? = null
+    private lateinit var service : RedditService
 
-    private var randomSubData : QueryResponse? = null
-    private var randomSubName : String? = null
+    private lateinit var randomSubData : QueryResponse
+    private lateinit var randomSubName : String
 
     private var randomPostData : List<QueryResponse>? = null
     private var randomPostTitle : String? = null
@@ -74,28 +77,49 @@ class MainActivity : AppCompatActivity() {
             .create()
         val url = "https://www.reddit.com"
 
-        service = Retrofit.Builder()
+        val retrofit = Retrofit.Builder()
             .baseUrl(url)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(RedditService::class.java)
+
+        if (retrofit != null)
+        {
+            service = retrofit
+        }
+        else {
+            AlertDialog.Builder(this)
+                .setTitle("Error")
+                .setMessage("Retrofit builder failed")
+                .setNegativeButton("Close") { _, _ -> }
+                .show()
+        }
     }
 
     private fun buttonClicked()
     {
-        //setRandomSubredditData()
-        setRandomPostData()
-        //getSimilarSubreddits()
+        setRandomSubredditData()
     }
 
+    //Retrieve a random subreddit
     private fun setRandomSubredditData()
     {
-        val call = service?.fetchRandomSubreddit()
+        val call = service.getRandomSubreddit()
 
-        call?.enqueue(object : Callback<QueryResponse> {
+        call.enqueue(object : Callback<QueryResponse> {
             override fun onResponse(call: Call<QueryResponse>, response: Response<QueryResponse>) {
+
+                if (!response.isSuccessful ||  response.body() == null)
+                    throw Exception("GET RANDOM SUBREDDIT FAILED")
+
                 randomSubData = response.body()!!
-                randomSubName = randomSubData!!.rootData!!.childrenList?.get(0)?.childData?.subreddit
+
+                val sub = randomSubData.rootData!!.childrenList?.get(0)?.childData?.subreddit
+
+                if (!sub.isNullOrEmpty())
+                    randomSubName = sub
+                else
+                    setRandomSubredditData()
 
                 setRandomPostData()
             }
@@ -106,16 +130,15 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    //Retrieve a random post from the random subreddit
     private fun setRandomPostData()
     {
         randomSubName = "pics"
-        val call = service?.fetchSubredditRandomPost("pics")
+        val call = service.getSubredditRandomPost("pics")
 
-        call?.enqueue(object : Callback<List<QueryResponse>> {
-            override fun onResponse(call: Call<List<QueryResponse>>, response: Response<List<QueryResponse>>) {
-                if(!response.isSuccessful)
-                    Log.e("ICI", response.message())
-
+        call.enqueue(object : Callback<List<QueryResponse>> {
+            override fun onResponse(call: Call<List<QueryResponse>>, response: Response<List<QueryResponse>>)
+            {
                 randomPostData = response.body()!!
 
                 randomPostTitle = randomPostData!![0].rootData!!.childrenList?.get(0)?.childData?.title
@@ -123,21 +146,60 @@ class MainActivity : AppCompatActivity() {
 
                 if (!randomPostImageUrl.isNullOrEmpty() && !randomPostImageUrl!!.contains(".jpg"))
                 {
+                    //Retrieve another post if the current one is not an image
                     setRandomPostData()
                 }
                 else {
-                    setTitleImage()
+                    fetchSimilarSubreddits()
                 }
             }
 
-            override fun onFailure(call: Call<List<QueryResponse>>, t: Throwable) {
+            override fun onFailure(call: Call<List<QueryResponse>>, t: Throwable)
+            {
                 textView!!.text = t.message
             }
         })
     }
 
-    private fun setTitleImage()
+    //Retrieve a list of subreddits via a search with the random subreddit name
+    private fun fetchSimilarSubreddits()
     {
+        val call = service.getSubredditsSearch("pics")
+
+        call.enqueue(object : Callback<QueryResponse> {
+            override fun onResponse(call: Call<QueryResponse>, response: Response<QueryResponse>) {
+                if (response.isSuccessful) {
+                    similarSubredditsData = response.body()!!
+                    setSubredditsNameList()
+                }
+            }
+
+            override fun onFailure(call: Call<QueryResponse>, t: Throwable) {
+                textView!!.text = t.message
+            }
+        })
+    }
+
+    //Set the list of similar subreddits
+    private fun setSubredditsNameList()
+    {
+        for (child in similarSubredditsData.rootData?.childrenList!!)
+        {
+            var subName = child?.childData?.subreddit
+
+            // Add if the subreddit is not already in the list and note the random one we retrieved at the beginning
+            if (!subName.isNullOrEmpty() && !subredditsNameList.contains(subName) && subName != randomSubName)
+                subredditsNameList.add(subName)
+        }
+
+        setUIElements()
+    }
+
+    private fun setUIElements()
+    {
+       var answersList = getSubredditsAnswers()
+
+        //Load and set Image
         Picasso.get()
             .load(randomPostImageUrl)
             .fit()
@@ -148,68 +210,43 @@ class MainActivity : AppCompatActivity() {
                     //set textView
                     textView!!.text = randomPostTitle
 
-                    getSimilarSubreddits()
+                    for ((index, answer) in answersList.withIndex())
+                    {
+                        buttonList[index].text = answer
+                    }
                 }
 
                 override fun onError(e: java.lang.Exception?) {
                     //do smth when there is picture loading error
                 }
             });
-
     }
 
-    private fun getSimilarSubreddits()
+    private fun getSubredditsAnswers() : List<String>
     {
-        val call = service?.fetchSubredditsSearch("pics")
+        var answers : MutableList<String> = mutableListOf()
 
-        call?.enqueue(object : Callback<QueryResponse> {
-            override fun onResponse(call: Call<QueryResponse>, response: Response<QueryResponse>) {
-                if (response.isSuccessful)
-                    similarSubredditsData = response.body()!!
+        val n = Random.nextInt(buttonList.size)
 
-                setSubredditsNameList()
-                setButtonText()
-            }
-
-            override fun onFailure(call: Call<QueryResponse>, t: Throwable) {
-                textView!!.text = t.message
-            }
-        })
-    }
-
-    private fun setButtonText()
-    {
-        val correctAnswer = randomSubName
-        val n = Random.nextInt(0,3)
-        
-        for ((index, button) in buttonList.withIndex()) {
-            if (index == n)
-                button.text = "r/$correctAnswer"
-            else
-                button.text = getRelatedSubName()
-        }
-
-        //clear list
-        subredditsNameList.clear()
-    }
-
-    private fun setSubredditsNameList()
-    {
-        for (child in similarSubredditsData.rootData?.childrenList!!)
+        for (i in buttonList.indices)
         {
-            var subName = child?.childData?.subreddit
-            if (!subName.isNullOrEmpty() && !subredditsNameList.contains(subName) && subName != randomSubName)
-                subredditsNameList?.add(subName)
+            if (i == n)
+                answers.add("r/$randomSubName")
+            else
+                answers.add(getRelatedSubName())
         }
+
+        return answers
     }
 
     private fun getRelatedSubName() : String
     {
         var relatedSubName : String
-        var i : Int
         val childrenListSize = subredditsNameList.size
 
-        i = Random.nextInt(childrenListSize - 1)
+        //i = Random.nextInt(childrenListSize - 1)
+        var i : Int = Random.nextInt(childrenListSize)
+
         relatedSubName = subredditsNameList[i]
         subredditsNameList.removeAt(i)
 
