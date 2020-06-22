@@ -9,10 +9,12 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.google.gson.GsonBuilder
 import com.squareup.picasso.MemoryPolicy
 import com.squareup.picasso.Picasso
+import com.squareup.picasso.Transformation
 import kotlinx.coroutines.*
 import retrofit2.Call
 import retrofit2.Callback
@@ -23,7 +25,7 @@ import java.io.Console
 import java.lang.Exception
 import kotlin.random.Random
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), View.OnClickListener {
 
     private var textView: TextView? = null
 
@@ -35,6 +37,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var button4: Button
 
     private lateinit var buttonList: List<Button>
+
+    private lateinit var correctButton: Button
 
     private lateinit var service : RedditService
 
@@ -48,11 +52,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var similarSubredditsData : QueryResponse
     private var subredditsNameList = mutableListOf<String>()
 
+    private val loadingDialog = LoadingDialog(this@MainActivity)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        initRetroFit()
 
         textView = findViewById(R.id.textView)
 
@@ -65,8 +69,27 @@ class MainActivity : AppCompatActivity() {
 
         buttonList = listOf(button1, button2, button3, button4)
 
-        button1.setOnClickListener {
-            buttonClicked()
+        enableButtons(false)
+
+        initRetroFit()
+        loadNewQuestion()
+
+        button1.setOnClickListener { onClick(button1)}
+        button2.setOnClickListener { onClick(button2)}
+        button3.setOnClickListener { onClick(button3)}
+        button4.setOnClickListener { onClick(button4)}
+
+        enableButtons(true)
+    }
+
+    override fun onClick(v: View) {
+        if (v.id == correctButton.id)
+        {
+            displaySimpleAlert("Result", "CORRECT")
+        }
+        else
+        {
+            displaySimpleAlert("Result", "WRONG")
         }
     }
 
@@ -88,17 +111,41 @@ class MainActivity : AppCompatActivity() {
             service = retrofit
         }
         else {
-            AlertDialog.Builder(this)
-                .setTitle("Error")
-                .setMessage("Retrofit builder failed")
-                .setNegativeButton("Close") { _, _ -> }
-                .show()
+            displayErrorAlert("Error", "Retrofit initialization failed")
         }
     }
 
-    private fun buttonClicked()
+    private fun displaySimpleAlert(title: String, message : String)
     {
-        setRandomSubredditData()
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setNegativeButton("Next") { _, _ ->  loadNewQuestion() }
+            .show()
+    }
+
+    private fun displayErrorAlert(title: String, message : String)
+    {
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setNegativeButton("Close") { _, _ -> }
+            .show()
+    }
+
+    private fun loadNewQuestion()
+    {
+        enableButtons(false)
+        loadingDialog.showDialog()
+        setRandomPostData()
+        //setRandomSubredditData()
+        enableButtons(true)
+    }
+
+    //Disable or enable buttons
+    private fun enableButtons(toEnable : Boolean)
+    {
+        buttonList.forEach { it.isEnabled = toEnable }
     }
 
     //Retrieve a random subreddit
@@ -133,24 +180,25 @@ class MainActivity : AppCompatActivity() {
     //Retrieve a random post from the random subreddit
     private fun setRandomPostData()
     {
-        randomSubName = "pics"
-        val call = service.getSubredditRandomPost("pics")
+        //val call = service.getSubredditRandomPost(randomSubName)
+        val call = service.getRandomPost()
 
         call.enqueue(object : Callback<List<QueryResponse>> {
             override fun onResponse(call: Call<List<QueryResponse>>, response: Response<List<QueryResponse>>)
             {
                 randomPostData = response.body()!!
 
+                randomSubName = randomPostData!![0].rootData!!.childrenList?.get(0)?.childData?.subreddit!!
                 randomPostTitle = randomPostData!![0].rootData!!.childrenList?.get(0)?.childData?.title
                 randomPostImageUrl = randomPostData!![0].rootData!!.childrenList?.get(0)?.childData?.url
 
-                if (!randomPostImageUrl.isNullOrEmpty() && !randomPostImageUrl!!.contains(".jpg"))
+                if (!randomPostImageUrl.isNullOrEmpty() || randomPostImageUrl!!.contains(".jpg"))
                 {
-                    //Retrieve another post if the current one is not an image
-                    setRandomPostData()
+                    fetchSimilarSubreddits()
                 }
                 else {
-                    fetchSimilarSubreddits()
+                    //Retrieve another post if the current one is not an image
+                    setRandomPostData()
                 }
             }
 
@@ -214,6 +262,8 @@ class MainActivity : AppCompatActivity() {
                     {
                         buttonList[index].text = answer
                     }
+
+                    loadingDialog.dismissDialog()
                 }
 
                 override fun onError(e: java.lang.Exception?) {
@@ -230,8 +280,10 @@ class MainActivity : AppCompatActivity() {
 
         for (i in buttonList.indices)
         {
-            if (i == n)
+            if (i == n) {
                 answers.add("r/$randomSubName")
+                correctButton = buttonList[i]
+            }
             else
                 answers.add(getRelatedSubName())
         }

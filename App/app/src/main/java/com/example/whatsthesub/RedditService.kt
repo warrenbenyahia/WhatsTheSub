@@ -10,6 +10,9 @@ interface RedditService {
     @GET("/r/random.json")
     fun getRandomSubreddit(): Call<QueryResponse>
 
+    @GET("/random.json")
+    fun getRandomPost(): Call<List<QueryResponse>>
+
     @GET("/r/{subreddit}/random.json")
     fun getSubredditRandomPost(@Path("subreddit") subreddit: String): Call<List<QueryResponse>>
 
